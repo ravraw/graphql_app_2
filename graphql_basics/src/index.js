@@ -3,6 +3,7 @@ import faker from 'faker';
 
 const usersArr = [];
 const userIds = [];
+const postIds = [];
 const postsArr = [];
 const commentsArr = [];
 for (let i = 0; i < 10; i++) {
@@ -23,17 +24,16 @@ for (let i = 0; i < 50; i++) {
     published: faker.random.boolean(),
     author: userIds[Math.floor(Math.random() * userIds.length)]
   };
+  postIds.push(post.id);
   postsArr.push(post);
 }
 
 for (let i = 0; i < 100; i++) {
   let comment = {
     id: faker.random.uuid(),
-    text: faker.lorem.sentence(10)
-    // title: faker.lorem.sentence(2),
-    // body: faker.lorem.paragraphs(2),
-    // published: faker.random.boolean(),
-    // author: userIds[Math.floor(Math.random() * userIds.length)]
+    text: faker.lorem.sentence(10),
+    author: userIds[Math.floor(Math.random() * userIds.length)],
+    post: postIds[Math.floor(Math.random() * postIds.length)]
   };
   commentsArr.push(comment);
 }
@@ -54,6 +54,7 @@ type User{
   email:String!
   age:Int
   posts:[Post!]!
+  comments:[Comment!]!
 }
 type Post{
   id:ID!
@@ -61,10 +62,13 @@ type Post{
   body:String!
   published:Boolean!
   author:User!
+  comments:[Comment!]!
 },
 type Comment{
   id:ID!
   text:String!
+  author:User!
+  post:Post!
 }
 `;
 
@@ -93,7 +97,7 @@ const resolvers = {
         return isTitleMatch || isBodyMatch;
       });
     },
-    comments() {
+    comments(parent, args, ctx, info) {
       return commentsArr;
     },
     user() {
@@ -117,11 +121,25 @@ const resolvers = {
   Post: {
     author(parent, args, ctx, info) {
       return usersArr.find(user => user.id === parent.author);
+    },
+    comments(parent, args, ctx, info) {
+      return commentsArr.filter(comment => comment.post === parent.id);
     }
   },
   User: {
     posts(parent, args, ctx, info) {
       return postsArr.filter(post => post.author === parent.id);
+    },
+    comments(parent, args, ctx, info) {
+      return commentsArr.filter(comment => comment.author === parent.id);
+    }
+  },
+  Comment: {
+    author(parent, args, ctx, info) {
+      return usersArr.find(user => user.id === parent.author);
+    },
+    post(parent, args, ctx, info) {
+      return postsArr.find(post => post.id === parent.post);
     }
   }
 };
