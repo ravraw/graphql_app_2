@@ -1,5 +1,6 @@
-import { GraphQLServer } from 'graphql-yoga';
-import faker from 'faker';
+const { ApolloServer, gql } = require('apollo-server');
+
+const faker = require('faker');
 
 // Generate data with faker
 const usersArr = [];
@@ -41,46 +42,64 @@ for (let i = 0; i < 100; i++) {
   commentsArr.push(comment);
 }
 
-// Type definitions (schema)
-const typeDefs = `
-type Query{
-  users(query:String):[User!]!
-  posts(query:String):[Post!]!
-  comments(query:String):[Comment!]!
-  user:User!
-  post:Post!
-  comment:Comment!
-},
-type Mutation{
-  createUser(name:String!,email:String!,age:Int!):User!
-  createPost(title:String!,body:String!,published:Boolean!,author:ID!):Post!
-   createComment(text:String!,author:ID!,post:ID!):Comment!
-}
-type User{
-  id:ID!
-  name:String!
-  email:String!
-  age:Int
-  posts:[Post!]!
-  comments:[Comment!]!
-}
-type Post{
-  id:ID!
-  title:String!
-  body:String!
-  published:Boolean!
-  author:User!
-  comments:[Comment!]!
-},
-type Comment{
-  id:ID!
-  text:String!
-  author:User!
-  post:Post!
-}
+const typeDefs = gql`
+  type Query {
+    users(query: String): [User!]!
+    posts(query: String): [Post!]!
+    comments(query: String): [Comment!]!
+    user: User!
+    post: Post!
+    comment: Comment!
+  }
+  type Mutation {
+    createUser(data: createUserInput): User!
+    deleteUser(id: ID!): User!
+    createPost(data: createPostInput): Post!
+    deletePost(id: ID!): Post!
+    createComment(data: createCommentInput): Comment!
+    deleteComment(id: ID!): Comment!
+  }
+  input createUserInput {
+    name: String!
+    email: String!
+    age: Int!
+  }
+  input createPostInput {
+    title: String!
+    body: String!
+    published: Boolean!
+    author: ID!
+  }
+  input createCommentInput {
+    text: String!
+    author: ID!
+    post: ID!
+  }
+
+  type User {
+    id: ID!
+    name: String!
+    email: String!
+    age: Int
+    posts: [Post!]!
+    comments: [Comment!]!
+  }
+  type Post {
+    id: ID!
+    title: String!
+    body: String!
+    published: Boolean!
+    author: User!
+    comments: [Comment!]!
+  }
+  type Comment {
+    id: ID!
+    text: String!
+    author: User!
+    post: Post!
+  }
 `;
 
-// resolvers
 const resolvers = {
   Query: {
     users(parent, args, ctx, info) {
@@ -126,52 +145,84 @@ const resolvers = {
     }
   },
   Mutation: {
+    // create user
     createUser(parent, args, ctx, info) {
-      const { name, email, age } = args;
-
       const emailTaken = usersArr.some(user => {
-        return user.email === email;
+        return user.email === args.data.email;
       });
       if (emailTaken) {
         throw new Error('Email taken.');
       }
-      let newUser = { id: faker.random.uuid(), name, email, age };
+      let newUser = { id: faker.random.uuid(), ...args.data };
       usersArr.push(newUser);
       return newUser;
     },
+    // delete a user
+    deleteUser(parent, args, ctx, info) {
+      const userIndex = usersArr.findIndex(user => user.id === args.id);
+      if (userIndex === -1) {
+        throw new Error('User not found');
+      }
+      const deletedUser = usersArr.splice(userIndex, 1);
+      postsArr = postArr.filter(post => {
+        const match = post.author === args.id;
+        if (match) {
+          commentsArr = commentsArr.filter(comment => comment.post !== post.id);
+        }
+        return !match;
+      });
+      commentsArr = comments.filter(comment => comment.author !== args.id);
+      return deletedUser[0];
+    },
     createPost(parent, args, ctx, info) {
-      const { title, body, published, author } = args;
-      const userExists = usersArr.some(user => user.id === author);
+      // const { title, body, published, author } = args;
+      const userExists = usersArr.some(user => user.id === args.data.author);
       if (!userExists) {
         throw new Error('No user found');
       }
       let newPost = {
         id: faker.random.uuid(),
-        title,
-        body,
-        published,
-        author
+        ...args.data
       };
       postsArr.push(newPost);
       return newPost;
     },
+    deletePost(parent, args, ctx, info) {
+      const postIndex = postsArr.findIndex(post => post.id === args.id);
+      if (postIndex === -1) {
+        throw new Error('Post not found');
+      }
+      const deletedPost = postsArr.splice(postIndex, 1);
+
+      commenstArr = commentsArr.filter(comments => comments.post !== args.id);
+      return deletedPost[0];
+    },
     createComment(parent, args, ctx, info) {
-      const { text, author, post } = args;
+      // const { text, author, post } = args;
       const postExists = postsArr.some(
-        somePost => somePost.id === post && somePost.published
+        somePost => somePost.id === args.data.post && somePost.published
       );
-      const userExists = usersArr.some(user => user.id === author);
+      const userExists = usersArr.some(user => user.id === args.data.author);
 
       if (!postExists || !userExists) {
         throw new Error('Invalid post or user');
       }
       let newComment = {
         id: faker.random.uuid(),
-        text,
-        author,
-        post
+        ...args.data
       };
+      commentsArr.push(newComment);
       return newComment;
+    },
+    deleteComment(parent, args, ctx, info) {
+      const commentIndex = commentsArr.findIndex(
+        comment => comment.id === args.id
+      );
+      if (commentIndex === -1) {
+        throw new Error('Comment not found');
+      }
+      const deletedComment = commentsArr.splice(commentIndex, 1);
+      return deletedComment[0];
     }
   },
 
@@ -201,11 +252,8 @@ const resolvers = {
   }
 };
 
-const server = new GraphQLServer({
-  typeDefs,
-  resolvers
-});
+const server = new ApolloServer({ typeDefs, resolvers });
 
-server.start(() => {
-  console.log('Server is listening .....');
+server.listen().then(({ url }) => {
+  console.log(`🚀  Server ready at ${url}`);
 });
